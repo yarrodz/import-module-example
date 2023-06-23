@@ -15,6 +15,19 @@ npm i
 npm i ./import-1.0.0.tgz
 ```
 
+#### From this package we import one function setup import
+
+    const {
+        importsRouter,
+        importProcessesRouter
+    } = setupImport(io, recordModel, datasetModel);
+
+    app.use('/imports', importsRouter.router);
+    app.use('/import-processes', importProcessesRouter.router);
+
+it accepts socket.io instance, mongoose models for record and dataset
+returns router for imports and router for import processes 
+
 #### Start server:
 
     npm run start
