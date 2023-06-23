@@ -15,7 +15,7 @@ npm i
 npm i ./import-1.0.0.tgz
 ```
 
-#### From this package we import one function setup import
+#### From this package we import one function setupImport
 
     const {
         importsRouter,
