@@ -15,6 +15,21 @@ npm i
 npm i ./import-1.0.0.tgz
 ```
 
+#### From this package we import one function setupImport. 
+    const {
+        importsRouter,
+        importProcessesRouter
+    } = setupImport(
+        io, // socket.io instance 
+        recordModel, // Mongoose record model
+        datasetModel, // Mongoose dataset model
+        5, // The number of attempts to import will be retried if it fails.
+        5000, // The time delay before a failed import process will be retried.
+        100// The limit of datasets to be retrieved and transferred per step
+    );
+
+returns router for imports and router for import processes 
+
 #### Start server:
 
     npm run start

@@ -16,7 +16,14 @@ const io = socketService.listen(httpServer);
 const {
   importsRouter,
   importProcessesRouter
-} = setupImport(io, recordModel, datasetModel);
+} = setupImport(
+  io, // socket.io instance 
+  recordModel, // Mongoose record model
+  datasetModel, // Mongoose dataset model
+  5, // The number of attempts to import will be retried if it fails.
+  5000, // The time delay before a failed import process will be retried.
+  100// The limit of datasets to be retrieved and transferred per step
+);
 
 app.use('/imports', importsRouter.router);
 app.use('/import-processes', importProcessesRouter.router);
