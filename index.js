@@ -15,7 +15,8 @@ const io = socketService.listen(httpServer);
 
 const {
   importsRouter,
-  importProcessesRouter
+  importProcessesRouter,
+  reloadPendingImportProcesses// When server falls we need to reload all pending processes on restart
 } = setupImport(
   io, // socket.io instance 
   recordModel, // Mongoose record model
@@ -37,6 +38,7 @@ async function start() {
       httpServer.listen(PORT, () =>
         console.log(`Server listening on port: ${PORT}`)
       );
+      reloadPendingImportProcesses(); //reload all pending processes
     } catch (error) {
       console.error(error);
     }
