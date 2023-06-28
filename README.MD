@@ -18,7 +18,8 @@ npm i ./import-1.0.0.tgz
 #### From this package we import one function setupImport. 
     const {
         importsRouter,
-        importProcessesRouter
+        importProcessesRouter,
+        reloadPendingImportProcesses// When server falls we need to reload all pending processes on restart
     } = setupImport(
         io, // socket.io instance 
         recordModel, // Mongoose record model
@@ -28,7 +29,20 @@ npm i ./import-1.0.0.tgz
         100// The limit of datasets to be retrieved and transferred per step
     );
 
-returns router for imports and router for import processes 
+    async function start() {
+        try {
+            await mongoose.connect(MONGO_URL);
+            httpServer.listen(PORT, () =>
+            console.log(`Server listening on port: ${PORT}`)
+        );
+        reloadPendingImportProcesses(); //reload all pending processes
+        } catch (error) {
+        console.error(error);
+        }
+    }
+    start();
+
+Returns express routers for imports and import processes, function for reloading imoprt processes on server restart.
 
 #### Start server:
 
@@ -68,6 +82,7 @@ returns router for imports and router for import processes
                 "password": "YDLqCtSmFNp_MEdcMW6Kd12Fv7BUDbhZ",
                 "database": "xbjpfeyi"
             },
+            "target": "Table", --- Or "Custom select"
             "table": "operations", --- table from where datasets are imported
             "idColumn": "id" --- name of id column of the table
         }
@@ -226,3 +241,9 @@ This is working like create import. It returns id of updated import and columns.
     DELETE http://localhost:3000/import-processes/64959d7e9075e58b36f8e2cb
     retuns: true
 We cannot delete pending import process, we need to pause it before delete.
+
+
+## Changes:
+    1. On create and update requests, we need to add an additional parameter called target, which can have the values "Table" or "Custom select".
+
+    2. Every time the server restarts, we need to reload pending import processes. Additionally, the setupImport() function returns the reloadPendingImportProcesses() function which we need to call every time after the server starts.
