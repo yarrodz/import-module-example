@@ -9,25 +9,28 @@
 npm i
 ```
 
-#### Install import-1.0.0.tgz package (this is a package for importing data from databases):
+#### Install import-1.0.0.tgz package (this is a package for importing data from databases and api):
 
 ```
 npm i ./import-1.0.0.tgz
 ```
 
 #### From this package we import one function setupImport. 
+    const setupParams = {
+        io, // Socket.io instanse
+        recordModel, // mongoose record model
+        datasetModel, // mongoose dataset model
+        maxAttempts: 3, // The number of attempts to import will be retried if it fails.
+        attemptDelayTime: 1000, // delay before next attempt in milliseconds
+        oAuth2RedirectUri: 'http://localhost:3000/oauth-callback/', // OAuth2 callback redirect uri
+        clientUri: 'http://localhost:4200/' // Client uri
+    };
     const {
         importsRouter,
         importProcessesRouter,
-        reloadPendingImportProcesses// When server falls we need to reload all pending processes on restart
-    } = setupImport(
-        io, // socket.io instance 
-        recordModel, // Mongoose record model
-        datasetModel, // Mongoose dataset model
-        5, // The number of attempts to import will be retried if it fails.
-        5000, // The time delay before a failed import process will be retried.
-        100// The limit of datasets to be retrieved and transferred per step
-    );
+        oAuth2Router, // Contain one route OAuth2 callback
+        reloadPendingImportProcesses // When server falls we need to reload all pending processes on restart
+    } = setupImport(setupParams);
 
     async function start() {
         try {
@@ -42,208 +45,73 @@ npm i ./import-1.0.0.tgz
     }
     start();
 
-Returns express routers for imports and import processes, function for reloading imoprt processes on server restart.
+Returns express routers for imports, import processes, OAuth2, function for reloading imoprt processes on server restart.
 
 #### Start server:
 
     npm run start
 
 
-##### This is postman collection of requests that works with external postrgresql database 
-##### Open Postman, click on Import, choose 'Link' and paste the link
+#### We cannot use Postman for testing OAuth2 because it does not support redirects from the server. There is a client for testing.
 
-    https://api.postman.com/collections/27480704-b1ed5369-09fc-41ac-8e7d-eb5503c3cda4?access_key=PMAT-01H3MD7Z5JGD9WKY5ZWD417YK7
+    https://github.com/yarrodz/import-test-client
 
+    npm i
 
-#### There are 12 http requests and one socket.io request:
+    npm run start
 
-#### Socket.io request for receiving import process
-    There is currently no way to share a socket.io request in Postman, so it cannot be added to a Postman collection. I have tested it using a socket.io request in Postman.
+#### It consists of two main components: "Imports" and "Processes".
 
-    First, we need to connect to the socket.
-    http://localhost:3000/
-    Next, we need to send a 'join' event including the processId of the import that has executed (646cd1accef0e54e78f8aec0).
-    And we need to listen to event 'importProcess'
-    We will receive updated import process when it changes.
-   
+##### Imports
+Inside the 'imports' component, there are four other components for importing data from Airtable, Notion, Trello, and Postgres. They all have hardcoded requests with already provided parameters. Currently, these requests have authorization with my main account, so I cannot share credentials at the moment. I will create accounts for testing tomorrow.
 
-
-#### Create import request
-    POST http://localhost:3000/imports/
-    body:
-    {
-        "unit": "646cd1accef0e54e78f8aec0", --- can be any mongodb ObjectId
-        "source": "PostgreSQL",
-        "database": {
-            "connection": { --- connection parametres
-                "host": "snuffleupagus.db.elephantsql.com",
-                "port": 5432,
-                "username": "xbjpfeyi",
-                "password": "YDLqCtSmFNp_MEdcMW6Kd12Fv7BUDbhZ",
-                "database": "xbjpfeyi"
-            },
-            "target": "Table", --- Or "Custom select"
-            "table": "operations", --- table from where datasets are imported
-            "idColumn": "id" --- name of id column of the table
+##### create
+    create() {
+    const data = {
+      "unit": "64835bd65cafe862fc0d323a", --- mongodb ObjectId
+      "source": "API", import source. 'SQL' or 'API' 
+      "api": { --- API sub-schema
+        "method": "GET", --- request method. POST or GET
+        "url": "https://api.airtable.com/v0/apprK7nZPyUs8NYPp/tblnUkpnYHhfresQn", --- request url 
+        "responseType": "JSON", --- response type
+        "datasetsPath": "data.records", --- datasets are typically not placed in the response directly. Instead, they are typically nested within the response object.
+        "transferType": "Cursor Pagination", --- type of transfer. 'Offset pagination', 'Cursor pagination' or 'Chunk'
+        "paginationOptions": { --- Pagination parameters
+          "placement": "Query Parameters", --- placement inside request. 'Body' or 'Query parameters'.
+          "cursorParameterPath": "data.offset", --- when we use cursor pagination transfer, the cursor string is placed inside the previous request response. We utilize the cursor to include it in the next request and retrieve the next set of data.
+          "cursorParameter": "offset", --- cursor parameter name that will be used to include it in request 
+          "limitParameter": "maxRecords", --- limit parameter name
+          "limitValue": 384 --- the limitValue does not mean that we receive 384 per request. Airtable allows us to receive 100 datasets per request. Airtable uses this value to determine how many datasets we want to receive in total. If we specify the number greater than 100 it will include cursor in response. Mostly other api will use limitValue in default meaning it word.
+        },
+        "auth": { --- athorization for request  
+          "type": "OAuth 2.0", --- type of authorization
+          "oauth2": { --- params for oauth2
+            "client_id": "901cdb99-7ab8-4b98-9b53-71ed73d05606",
+            "scope": "data.records:read",
+            "auth_uri": "https://airtable.com/oauth2/v1/authorize",
+            "token_uri": "https://www.airtable.com/oauth2/v1/token",
+            "use_code_verifier": true
+          },
         }
-    }
-    returns: id of created import and information about columns(name and type), will not create import, if failed to get columns(if user provided wrong parametres). There is another create request for importing data from custom select in postman request collection. In case of custom select, we must not allow the addition of ORDER BY, OFFSET, LIMIT, ROWS FETCH NEXT, and ROWS ONLY to the custom select. Or suggest user to not to do that.
+      },
+      "idColumn": "id", --- id column name of datasets
+      "limitRequestsPerSecond": 1, --- tThe limit for requests per second that the API allows is 5. However, it never happened on my computer. Transforming and saving 100 datasets in parralel to mongo takes anywhere from half a second to a second
+      "datasetsCount": 384 --- Count of total datasets
+    };
 
-#### Connect request. when import created we can receive columns again. 
-    POST http://localhost:3000/imports/connect/
-    body: 
-    {
-        "id": "6495a5523eec96f023f31ab8" --- id of import
-    }
-    returns id of import and columns from table(or custom select).
-
-#### Set fields request. when import created and we have columns, we can can set fields for import. 
-    POST http://localhost:3000/imports/setFields
-    body:
-    {
-        "id": "6495a8d53eec96f023f4fe5c",
-        "fields": [
-            {
-                "feature": {
-                    "name": "number",
-                    "type": "number",
-                    "_id": "64835bd65cafe862fc0d323a"
-                },
-                "source": "id"
-            },
-            {
-                "feature": {
-                    "name": "name",
-                    "type": "text",
-                    "_id": "64835bd65cafe862fc0d323a"
-                },
-                "source": "name"
-            },
-            {
-                "feature": {
-                    "name": "long-text",
-                    "type": "long-text",
-                    "_id": "64835bd65cafe862fc0d323a"
-                },
-                "source": "name"
-            },
-            {
-                "feature": {
-                    "name": "time",
-                    "type": "time",
-                    "_id": "64835bd65cafe862fc0d323b"
-                },
-                "source": "time"
-            },
-            {
-                "feature": {
-                    "name": "date",
-                    "type": "date",
-                    "_id": "64835bd65cafe862fc0d323b"
-                },
-                "source": "date"
-            },
-            {
-                "feature": {
-                    "name": "datetime",
-                    "type": "datetime",
-                    "_id": "64835bd65cafe862fc0d323b"
-                },
-                "source": "datetime"
-            }
-        ]
-    }
-    returns: import with created fields
-
-#### Start import request. Once we've configured the fields for importing, we can start the import.
-
-    POST http://localhost:3000/imports/start
-    body:
-    {
-        "id": "648361be35867ac7d6141bec", - id of import
-    }
-    returns: id of created process. We send this processId in socket.io request.
-
-It generates an import process that stores information about the execution of the import process which can be observed in the 'importprocesses' table or socket.io request. During import, the properties 'processedDatasetsCount' and 'transferredDatasetsCount' increase their values. The import process has a status that can be 'Pending', 'Paused', 'Complete' or 'Failed'. The result of the import process is transferred datasets and records which can be viewed in the tables. In case any error occurs during import, there are limited attempts(5) that will retry to reload the import every period of time(5 seconds). Once all attempts have been exhausted, the process status will be set to "Failed", and an error message will be set.
-
-#### Pause import process request.
-    post http://localhost:3000/imports/pause
-    body:
-    {
-        "id": "648361be35867ac7d6141bec", -- id of process
-    }
-    returns true
-
-We can pause an import. The status of the import process will change to "Paused", and import execution will stop. We can pause only pending import process.
+    this.http.post('http://localhost:3000/imports/', data, { withCredentials: true, observe: "response" })
+      .subscribe(
+        (response) => {
+          if (response.status == 201) { --- If we receive a 201 status, the client knows that it needs to redirect to the link provided in the response. (300 response codes are blocked for some reason.) The OAuth2 Auth Uri is included in the response. We will be navigated to the Airtable OAuth2 Uri, where we will grant access to use its data. Then, it will be redirected to the OAuth2 callback endpoint defined on the our server. Inside the callback function, will be send an additional request to receive the access and refresh tokens and then save them to mongo. Finally, we will be redirect the client back to the previous page with the provided query parameters. The client, using ActivatedRoute, will understand that it needs to make the same request, but it is already authorized.
+            window.location.href = response.body as string;
+          } else { --- we used simple authorization and received response right away
+            console.log('Response from create');
+            console.log(response.body);
+          }
+        },
+        (error) => console.log('Error while sending create: ', error.message)
+      );
+  }
 
 
-
-#### Reload import process
-    POST http://localhost:3000/imports/reload
-    body:
-    {
-        "id": "648361be35867ac7d6141bec", -- id of process
-    }
-    returns: id of import process
-
-We can reload that import. We have to pass the id of the paused process. The process status will be changed to 'Pending' and import will be reloaded from the point it paused. Only paused process can be reloaded.
-
-#### Retry import process
-    POST http://localhost:3000/imports/retry
-    body:
-    {
-        "id": "648361be35867ac7d6141bec", -- id of process
-    }
-    returns: id of import process
-
-We can create a situation where the password or table name in the database configuration is invalid by editing the import instance in the table. Then import process will be failed.
-
-Then we can modify them to their correct values and send a retry request. This will reset the attempts and error message, and start import again.
-
-
-#### Get imports list
-    GET http://localhost:3000/imports/646cd1accef0e54e78f8aec0
-    returns: List of imports by unitId
-
-
-#### Get import processes list
-    GET http://localhost:3000/import-processes/646cd1accef0e54e78f8aec0
-    returns: List of import processes by unitId
-
-#### Update import
-    PUT http://localhost:3000/imports/
-    body: 
-        {
-            "id": "6495a5523eec96f023f31ab8",
-            "impt": {
-                "unit": "646cd1accef0e54e78f8aec0",
-                "source": "PostgreSQL",
-                "database": {
-                    "connection": {
-                        "host": "snuffleupagus.db.elephantsql.com",
-                        "port": 5432,
-                        "username": "xbjpfeyi",
-                        "password": "YDLqCtSmFNp_MEdcMW6Kd12Fv7BUDbhZ",
-                        "database": "xbjpfeyi"
-                    },
-                    "table": "operations",
-                    "idColumn": "id"
-                }
-            }
-        }
-This is working like create import. It returns id of updated import and columns. If the user provides incorrect parameters, they will not be able to receive the columns and the import will not be updated.
-
- #### Delete import 
-    DELETE http://localhost:3000/imports/6492bed9d97abb8d17209d67
-    returns: true
-
-#### Delete import process
-    DELETE http://localhost:3000/import-processes/64959d7e9075e58b36f8e2cb
-    retuns: true
-We cannot delete pending import process, we need to pause it before delete.
-
-
-## Changes:
-    1. On create and update requests, we need to add an additional parameter called target, which can have the values "Table" or "Custom select".
-
-    2. Every time the server restarts, we need to reload pending import processes. Additionally, the setupImport() function returns the reloadPendingImportProcesses() function which we need to call every time after the server starts.
+#####    
