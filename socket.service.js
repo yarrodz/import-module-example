@@ -16,9 +16,7 @@ class SocketService {
             },
         });
 
-        this.io.on("connection", async (socket) => {
-
-
+        this.io.on("connection", async(socket) => {
             socket.on("join", (processId) => {
                 socket.join(processId.trim());
 
@@ -27,7 +25,7 @@ class SocketService {
             socket.on("unsubscribe", (data) => {
                 socket.leaveAll();
             });
-    });
+        });
         return this.io;
     }
 }
